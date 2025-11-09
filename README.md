@@ -1,0 +1,1 @@
+gcc -std=c11 -o factory factory.c -lpthread 2>&1
