@@ -26,6 +26,7 @@ typedef struct {
     int total_packed;            // Global packing counter
     int target_count;            // N (total goal)
     int production_done;         // Flag: 1 when all N produced
+    int next_hotdog_id;          // Global counter for unique hotdog IDs
     
     int *maker_counts;           // Per-maker production counts
     int *packer_counts;          // Per-packer packing counts
@@ -95,7 +96,6 @@ void* maker_thread(void *arg) {
     ThreadArg *targ = (ThreadArg *)arg;
     HotdogManager *manager = targ->manager;
     int maker_id = targ->id;
-    int hotdog_id = 0;
     
     while (1) {
         // Check if we've produced enough (check before starting work)
@@ -109,9 +109,14 @@ void* maker_thread(void *arg) {
         // Make hot dog (4 units of work)
         do_work(4);
         
+        // Get unique hotdog ID (synchronized)
+        pthread_mutex_lock(&manager->lock);
+        int hotdog_id = manager->next_hotdog_id++;
+        pthread_mutex_unlock(&manager->lock);
+        
         // Create hotdog
         Hotdog hd;
-        hd.id = hotdog_id++;
+        hd.id = hotdog_id;
         hd.maker_id = maker_id;
         
         // Send hot dog into pool (1 unit of work)
@@ -199,6 +204,7 @@ int hotdog_manager_init(HotdogManager *manager, int N, int S, int M, int P) {
     manager->total_produced = 0;
     manager->total_packed = 0;
     manager->production_done = 0;
+    manager->next_hotdog_id = 1;  // Start IDs from 1
     manager->front = 0;
     manager->back = 0;
     manager->count = 0;
