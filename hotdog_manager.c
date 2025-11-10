@@ -98,19 +98,19 @@ void* maker_thread(void *arg) {
     int maker_id = targ->id;
     
     while (1) {
-        // Check if we've produced enough (check before starting work)
+        // Make hot dog (4 units of work)
+        do_work(4);
+        
+        // Check if we should stop AND get unique hotdog ID (synchronized)
         pthread_mutex_lock(&manager->lock);
+        
+        // Check if we've produced enough BEFORE assigning ID
         if (manager->total_produced >= manager->target_count) {
             pthread_mutex_unlock(&manager->lock);
             break;
         }
-        pthread_mutex_unlock(&manager->lock);
         
-        // Make hot dog (4 units of work)
-        do_work(4);
-        
-        // Get unique hotdog ID (synchronized)
-        pthread_mutex_lock(&manager->lock);
+        // Get unique hotdog ID only if we're continuing
         int hotdog_id = manager->next_hotdog_id++;
         pthread_mutex_unlock(&manager->lock);
         
