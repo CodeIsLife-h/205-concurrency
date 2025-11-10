@@ -134,15 +134,17 @@ void* maker_thread(void *arg) {
 int pool_get(HotdogManager *manager, Hotdog *hd, int packer_id) {
     pthread_mutex_lock(&manager->lock);
     
-    // Wait while buffer is empty AND (production not done OR items still exist)
-    // This prevents deadlock: if production is done and buffer is empty, we're finished
+    // Wait while buffer is empty AND production not done AND we haven't packed enough
+    // Exit if: buffer empty AND (production done OR we've packed enough)
     while (manager->count == 0 && 
-           !(manager->production_done && manager->total_packed < manager->target_count)) {
+           !manager->production_done && 
+           manager->total_packed < manager->target_count) {
         pthread_cond_wait(&manager->not_empty, &manager->lock);
     }
     
-    // Check if we should stop
-    if (manager->count == 0 && manager->production_done) {
+    // Check if we should stop (buffer empty AND either production done OR we've packed enough)
+    if (manager->count == 0 && 
+        (manager->production_done || manager->total_packed >= manager->target_count)) {
         pthread_mutex_unlock(&manager->lock);
         return 0; // No more items
     }
