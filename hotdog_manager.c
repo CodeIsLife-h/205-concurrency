@@ -27,6 +27,7 @@ typedef struct {
     int target_count;            // N (total goal)
     int production_done;         // Flag: 1 when all N produced
     int next_hotdog_id;          // Global counter for unique hotdog IDs
+    int next_expected_id;        // Next expected hotdog ID to be put into buffer (for ordering)
     
     int *maker_counts;           // Per-maker production counts
     int *packer_counts;          // Per-packer packing counts
@@ -77,6 +78,18 @@ void pool_put(HotdogManager *manager, Hotdog *hd, int maker_id) {
         return;
     }
     
+    // Wait until it's this hotdog's turn to be put (ensure sequential order 1 to N)
+    while (hd->id != manager->next_expected_id && 
+           manager->total_produced < manager->target_count) {
+        pthread_cond_wait(&manager->not_full, &manager->lock);
+        
+        // Re-check if we should stop after waking up
+        if (manager->total_produced >= manager->target_count) {
+            pthread_mutex_unlock(&manager->lock);
+            return;
+        }
+    }
+    
     // Add to circular buffer
     manager->buffer[manager->back] = *hd;
     manager->back = (manager->back + 1) % manager->size;
@@ -86,11 +99,16 @@ void pool_put(HotdogManager *manager, Hotdog *hd, int maker_id) {
     manager->total_produced++;
     manager->maker_counts[maker_id]++;
     
+    // Increment next expected ID to maintain sequential order
+    manager->next_expected_id++;
+    
     // Log the action while holding the lock to ensure correct order
     log_write(manager, "m%d puts %d\n", maker_id + 1, hd->id);
     
     // Signal packers that buffer is not empty
     pthread_cond_signal(&manager->not_empty);
+    // Signal other makers that might be waiting for their turn
+    pthread_cond_broadcast(&manager->not_full);
     pthread_mutex_unlock(&manager->lock);
 }
 
@@ -207,6 +225,7 @@ int hotdog_manager_init(HotdogManager *manager, int N, int S, int M, int P) {
     manager->total_packed = 0;
     manager->production_done = 0;
     manager->next_hotdog_id = 1;  // Start IDs from 1
+    manager->next_expected_id = 1;  // Start expected ID from 1 (for ordering)
     manager->front = 0;
     manager->back = 0;
     manager->count = 0;
