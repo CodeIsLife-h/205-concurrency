@@ -90,7 +90,7 @@ void pool_put(HotdogManager *manager, Hotdog *hd, int maker_id) {
         }
     }
     
-    // Add to circular buffer
+    // Add to back of circular buffer (FIFO - items added to back, removed from front)
     manager->buffer[manager->back] = *hd;
     manager->back = (manager->back + 1) % manager->size;
     manager->count++;
@@ -148,7 +148,7 @@ void* maker_thread(void *arg) {
     return NULL;
 }
 
-// Consumer: Remove hotdog from buffer
+// Consumer: Remove hotdog from buffer (FIFO - takes from front)
 int pool_get(HotdogManager *manager, Hotdog *hd, int packer_id) {
     pthread_mutex_lock(&manager->lock);
     
@@ -167,7 +167,13 @@ int pool_get(HotdogManager *manager, Hotdog *hd, int packer_id) {
         return 0; // No more items
     }
     
-    // Remove from circular buffer
+    // Double-check buffer is not empty (safety check to prevent duplicate packing)
+    if (manager->count == 0) {
+        pthread_mutex_unlock(&manager->lock);
+        return 0; // Buffer became empty
+    }
+    
+    // Remove from front of circular buffer (FIFO - first in, first out)
     *hd = manager->buffer[manager->front];
     manager->front = (manager->front + 1) % manager->size;
     manager->count--;
