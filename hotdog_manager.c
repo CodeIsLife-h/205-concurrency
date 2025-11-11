@@ -291,6 +291,12 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     
+    // Validate N > S constraint
+    if (N <= S) {
+        fprintf(stderr, "Error: Total hot dogs (N) must be greater than buffer size (S)\n");
+        return 1;
+    }
+    
     // Validate thread constraints
     if (M < 1) {
         fprintf(stderr, "Error: Number of maker threads (M) must be at least 1\n");
