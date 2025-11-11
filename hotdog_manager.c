@@ -291,6 +291,17 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     
+    // Validate thread constraints
+    if (M < 1) {
+        fprintf(stderr, "Error: Number of maker threads (M) must be at least 1\n");
+        return 1;
+    }
+    
+    if (P > 30) {
+        fprintf(stderr, "Error: Number of packer threads (P) cannot exceed 30\n");
+        return 1;
+    }
+    
     HotdogManager manager;
     if (hotdog_manager_init(&manager, N, S, M, P) != 0) {
         fprintf(stderr, "Error: Failed to initialize hotdog manager\n");
