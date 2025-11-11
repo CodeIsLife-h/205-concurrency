@@ -65,14 +65,17 @@ void log_write(HotdogManager *manager, const char *format, ...) {
 void pool_put(HotdogManager *manager, Hotdog *hd, int maker_id) {
     pthread_mutex_lock(&manager->lock);
     
-    // Wait while buffer is full AND production not complete
+    // Wait while buffer is full AND we still have reserved slots to add
+    // (total_produced was incremented in maker_thread, so we need to add this hotdog)
     while (manager->count == manager->size && 
-           manager->total_produced < manager->target_count) {
+           manager->total_produced <= manager->target_count) {
         pthread_cond_wait(&manager->not_full, &manager->lock);
     }
     
     // Check if we should stop (N already produced)
-    if (manager->total_produced >= manager->target_count) {
+    // Note: total_produced was already incremented in maker_thread when ID was assigned
+    if (manager->total_produced > manager->target_count) {
+        // This shouldn't happen, but handle it gracefully
         pthread_mutex_unlock(&manager->lock);
         return;
     }
@@ -82,8 +85,7 @@ void pool_put(HotdogManager *manager, Hotdog *hd, int maker_id) {
     manager->back = (manager->back + 1) % manager->size;
     manager->count++;
     
-    // Update counters
-    manager->total_produced++;
+    // Update counters (total_produced was already incremented in maker_thread)
     manager->maker_counts[maker_id]++;
     
     // Log the action while holding the lock to ensure correct order
@@ -106,17 +108,19 @@ void* maker_thread(void *arg) {
         // Make hot dog (4 units of work)
         do_work(4);
         
-        // Check if we should stop AND get unique hotdog ID (synchronized)
+        // Check if we should stop AND reserve a production slot (synchronized)
         pthread_mutex_lock(&manager->lock);
         
-        // Check if we've produced enough BEFORE assigning ID
+        // Check if we've produced enough BEFORE reserving a slot
         if (manager->total_produced >= manager->target_count) {
             pthread_mutex_unlock(&manager->lock);
             break;
         }
         
-        // Get unique hotdog ID only if we're continuing
+        // Reserve a production slot and get unique hotdog ID atomically
+        // This ensures we never exceed N hotdogs
         int hotdog_id = manager->next_hotdog_id++;
+        manager->total_produced++;  // Reserve the slot immediately
         pthread_mutex_unlock(&manager->lock);
         
         // Create hotdog
@@ -184,13 +188,13 @@ void* packer_thread(void *arg) {
     int packer_id = targ->id;
     
     while (1) {
-        // Take hot dog from pool (1 unit of work)
-        do_work(1);
-        
         Hotdog hd;
         if (!pool_get(manager, &hd, packer_id)) {
             break; // No more items
         }
+        
+        // Take hot dog from pool (1 unit of work) - only after detecting hotdog
+        do_work(1);
         
         // Pack the hot dog (2 units of work)
         do_work(2);
