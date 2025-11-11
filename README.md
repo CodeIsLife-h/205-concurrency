@@ -1,1 +1,1 @@
-gcc -std=c11 -o factory factory.c -lpthread 2>&1
+gcc -std=c11 -o hotdog_manager hotdog_manager.c -lpthread 2>&1
