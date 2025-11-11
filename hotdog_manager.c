@@ -86,6 +86,9 @@ void pool_put(HotdogManager *manager, Hotdog *hd, int maker_id) {
     manager->total_produced++;
     manager->maker_counts[maker_id]++;
     
+    // Log the action while holding the lock to ensure correct order
+    log_write(manager, "m%d puts %d\n", maker_id + 1, hd->id);
+    
     // Signal packers that buffer is not empty
     pthread_cond_signal(&manager->not_empty);
     pthread_mutex_unlock(&manager->lock);
@@ -122,9 +125,6 @@ void* maker_thread(void *arg) {
         // Send hot dog into pool (1 unit of work)
         do_work(1);
         pool_put(manager, &hd, maker_id);
-        
-        // Log the action
-        log_write(manager, "m%d puts %d\n", maker_id + 1, hd.id);
     }
     
     return NULL;
@@ -158,6 +158,10 @@ int pool_get(HotdogManager *manager, Hotdog *hd, int packer_id) {
     manager->total_packed++;
     manager->packer_counts[packer_id]++;
     
+    // Log the action while holding the lock to ensure correct order
+    log_write(manager, "p%d gets %d from m%d\n", 
+              packer_id + 1, hd->id, hd->maker_id + 1);
+    
     // Signal makers that buffer is not full
     pthread_cond_signal(&manager->not_full);
     pthread_mutex_unlock(&manager->lock);
@@ -179,10 +183,6 @@ void* packer_thread(void *arg) {
         if (!pool_get(manager, &hd, packer_id)) {
             break; // No more items
         }
-        
-        // Log the action
-        log_write(manager, "p%d gets %d from m%d\n", 
-                  packer_id + 1, hd.id, hd.maker_id + 1);
         
         // Pack the hot dog (2 units of work)
         do_work(2);
