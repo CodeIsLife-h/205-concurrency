@@ -3,42 +3,33 @@
 #include <pthread.h>
 #include <stdarg.h>
 
-// Hot dog structure
-typedef struct {
-    int id;
-    int maker_id;
-} Hotdog;
+// Global shared state (no structs!)
+int *hotdog_id_buffer = NULL;      // Buffer for hotdog IDs
+int *hotdog_maker_buffer = NULL;   // Buffer for maker IDs
+int buffer_size = 0;                // S (buffer capacity)
+int buffer_front = 0;               // Index to remove from
+int buffer_back = 0;                // Index to add to
+int buffer_count = 0;               // Current items in buffer
 
-// Global shared state
-typedef struct {
-    Hotdog *buffer;              // Circular buffer
-    int size;                    // S (buffer capacity)
-    int front;                   // Index to remove from
-    int back;                    // Index to add to
-    int count;                   // Current items in buffer
-    
-    pthread_mutex_t lock;        // Protects buffer and counters
-    pthread_mutex_t log_lock;    // Protects log file writes
-    pthread_cond_t not_full;     // Makers wait here
-    pthread_cond_t not_empty;    // Packers wait here
-    
-    int total_produced;          // Global production counter
-    int total_packed;            // Global packing counter
-    int target_count;            // N (total goal)
-    int production_done;         // Flag: 1 when all N produced
-    int next_hotdog_id;          // Global counter for unique hotdog IDs
-    
-    int *maker_counts;           // Per-maker production counts
-    int *packer_counts;          // Per-packer packing counts
-    
-    FILE *log_file;
-} HotdogManager;
+// Mutexes and condition variables (can use static initialization!)
+pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t not_full = PTHREAD_COND_INITIALIZER;
+pthread_cond_t not_empty = PTHREAD_COND_INITIALIZER;
 
-// Thread argument structure
-typedef struct {
-    HotdogManager *manager;
-    int id;
-} ThreadArg;
+// Global counters
+int total_produced = 0;             // Global production counter
+int total_packed = 0;               // Global packing counter
+int target_count = 0;               // N (total goal)
+int production_done = 0;            // Flag: 1 when all N produced
+int next_hotdog_id = 1;             // Global counter for unique hotdog IDs
+
+// Per-thread counters
+int *maker_counts = NULL;           // Per-maker production counts
+int *packer_counts = NULL;          // Per-packer packing counts
+
+// Log file
+FILE *log_file = NULL;
 
 // Simulate n units of work (from lab)
 void do_work(int n) {
@@ -49,147 +40,146 @@ void do_work(int n) {
 }
 
 // Thread-safe logging function
-void log_write(HotdogManager *manager, const char *format, ...) {
+void log_write(const char *format, ...) {
     va_list args;
     va_start(args, format);
     
-    pthread_mutex_lock(&manager->log_lock);
-    vfprintf(manager->log_file, format, args);
-    fflush(manager->log_file);  // Ensure immediate write
-    pthread_mutex_unlock(&manager->log_lock);
+    pthread_mutex_lock(&log_lock);
+    vfprintf(log_file, format, args);
+    fflush(log_file);  // Ensure immediate write
+    pthread_mutex_unlock(&log_lock);
     
     va_end(args);
 }
 
 // Producer: Add hotdog to buffer
-void pool_put(HotdogManager *manager, Hotdog *hd, int maker_id) {
-    pthread_mutex_lock(&manager->lock);
+void pool_put(int hotdog_id, int maker_id) {
+    pthread_mutex_lock(&lock);
     
     // Wait while buffer is full AND we still have reserved slots to add
     // (total_produced was incremented in maker_thread, so we need to add this hotdog)
-    while (manager->count == manager->size && 
-           manager->total_produced <= manager->target_count) {
-        pthread_cond_wait(&manager->not_full, &manager->lock);
+    while (buffer_count == buffer_size && 
+           total_produced <= target_count) {
+        pthread_cond_wait(&not_full, &lock);
     }
     
     // Check if we should stop (N already produced)
     // Note: total_produced was already incremented in maker_thread when ID was assigned
-    if (manager->total_produced > manager->target_count) {
-        // This shouldn't happen, but handle it gracefully
-        pthread_mutex_unlock(&manager->lock);
-        return;
+    // If total_produced > target_count, that's an error (shouldn't happen)
+    // If total_produced == target_count, this is the Nth hotdog and should be added
+    if (total_produced > target_count) {
+        pthread_mutex_unlock(&lock);
+        return; // Error condition - produced too many
     }
     
     // Add to back of circular buffer (FIFO - items added to back, removed from front)
-    manager->buffer[manager->back] = *hd;
-    manager->back = (manager->back + 1) % manager->size;
-    manager->count++;
+    hotdog_id_buffer[buffer_back] = hotdog_id;
+    hotdog_maker_buffer[buffer_back] = maker_id;
+    buffer_back = (buffer_back + 1) % buffer_size;
+    buffer_count++;
     
     // Update counters (total_produced was already incremented in maker_thread)
-    manager->maker_counts[maker_id]++;
+    maker_counts[maker_id]++;
     
     // Log the action while holding the lock to ensure correct order
-    log_write(manager, "m%d puts %d\n", maker_id + 1, hd->id);
+    log_write("m%d puts %d\n", maker_id + 1, hotdog_id);
     
     // Signal packers that buffer is not empty
-    pthread_cond_signal(&manager->not_empty);
+    pthread_cond_signal(&not_empty);
     // Signal makers that buffer is not full
-    pthread_cond_signal(&manager->not_full);
-    pthread_mutex_unlock(&manager->lock);
+    pthread_cond_signal(&not_full);
+    pthread_mutex_unlock(&lock);
 }
 
 // Maker thread (producer)
 void* maker_thread(void *arg) {
-    ThreadArg *targ = (ThreadArg *)arg;
-    HotdogManager *manager = targ->manager;
-    int maker_id = targ->id;
+    int maker_id = *(int *)arg;  // Just pass int directly, no struct needed
     
     while (1) {
         // Make hot dog (4 units of work)
         do_work(4);
         
         // Check if we should stop AND reserve a production slot (synchronized)
-        pthread_mutex_lock(&manager->lock);
+        pthread_mutex_lock(&lock);
         
         // Check if we've produced enough BEFORE reserving a slot
-        if (manager->total_produced >= manager->target_count) {
-            pthread_mutex_unlock(&manager->lock);
+        if (total_produced >= target_count) {
+            pthread_mutex_unlock(&lock);
             break;
         }
         
         // Reserve a production slot and get unique hotdog ID atomically
         // This ensures we never exceed N hotdogs
-        int hotdog_id = manager->next_hotdog_id++;
-        manager->total_produced++;  // Reserve the slot immediately
-        pthread_mutex_unlock(&manager->lock);
-        
-        // Create hotdog
-        Hotdog hd;
-        hd.id = hotdog_id;
-        hd.maker_id = maker_id;
+        int hotdog_id = next_hotdog_id++;
+        total_produced++;  // Reserve the slot immediately
+        pthread_mutex_unlock(&lock);
         
         // Send hot dog into pool (1 unit of work)
         do_work(1);
-        pool_put(manager, &hd, maker_id);
+        pool_put(hotdog_id, maker_id);
     }
     
     return NULL;
 }
 
 // Consumer: Remove hotdog from buffer (FIFO - takes from front)
-int pool_get(HotdogManager *manager, Hotdog *hd, int packer_id) {
-    pthread_mutex_lock(&manager->lock);
+int pool_get(int *hotdog_id, int *maker_id, int packer_id) {
+    pthread_mutex_lock(&lock);
     
     // Wait while buffer is empty AND production not done AND we haven't packed enough
     // Exit if: buffer empty AND (production done OR we've packed enough)
-    while (manager->count == 0 && 
-           !manager->production_done && 
-           manager->total_packed < manager->target_count) {
-        pthread_cond_wait(&manager->not_empty, &manager->lock);
+    while (buffer_count == 0 && 
+           !production_done && 
+           total_packed < target_count) {
+        pthread_cond_wait(&not_empty, &lock);
     }
     
-    // Check if we should stop (buffer empty AND either production done OR we've packed enough)
-    if (manager->count == 0 && 
-        (manager->production_done || manager->total_packed >= manager->target_count)) {
-        pthread_mutex_unlock(&manager->lock);
-        return 0; // No more items
+    // CRITICAL: Check if we've already packed enough BEFORE removing from buffer
+    // This prevents race condition where multiple packers could pack past target_count
+    if (total_packed >= target_count) {
+        pthread_mutex_unlock(&lock);
+        return 0; // Already packed enough, stop immediately
     }
     
-    // Double-check buffer is not empty (safety check to prevent duplicate packing)
-    if (manager->count == 0) {
-        pthread_mutex_unlock(&manager->lock);
-        return 0; // Buffer became empty
+    // Check if buffer is empty (after checking total_packed)
+    if (buffer_count == 0) {
+        // Buffer is empty - check if production is done
+        if (production_done) {
+            pthread_mutex_unlock(&lock);
+            return 0; // Production done and buffer empty
+        }
+        // Shouldn't reach here if wait condition was correct, but handle gracefully
+        pthread_mutex_unlock(&lock);
+        return 0; // Buffer empty but production not done (should have waited)
     }
     
     // Remove from front of circular buffer (FIFO - first in, first out)
-    *hd = manager->buffer[manager->front];
-    manager->front = (manager->front + 1) % manager->size;
-    manager->count--;
+    *hotdog_id = hotdog_id_buffer[buffer_front];
+    *maker_id = hotdog_maker_buffer[buffer_front];
+    buffer_front = (buffer_front + 1) % buffer_size;
+    buffer_count--;
     
     // Update counters
-    manager->total_packed++;
-    manager->packer_counts[packer_id]++;
+    total_packed++;
+    packer_counts[packer_id]++;
     
     // Log the action while holding the lock to ensure correct order
-    log_write(manager, "p%d gets %d from m%d\n", 
-              packer_id + 1, hd->id, hd->maker_id + 1);
+    log_write("p%d gets %d from m%d\n", packer_id + 1, *hotdog_id, *maker_id + 1);
     
     // Signal makers that buffer is not full
-    pthread_cond_signal(&manager->not_full);
-    pthread_mutex_unlock(&manager->lock);
+    pthread_cond_signal(&not_full);
+    pthread_mutex_unlock(&lock);
     
     return 1; // Success
 }
 
 // Packer thread (consumer)
 void* packer_thread(void *arg) {
-    ThreadArg *targ = (ThreadArg *)arg;
-    HotdogManager *manager = targ->manager;
-    int packer_id = targ->id;
+    int packer_id = *(int *)arg;  // Just pass int directly, no struct needed
     
     while (1) {
-        Hotdog hd;
-        if (!pool_get(manager, &hd, packer_id)) {
+        int hotdog_id, maker_id;
+        if (!pool_get(&hotdog_id, &maker_id, packer_id)) {
             break; // No more items
         }
         
@@ -200,87 +190,79 @@ void* packer_thread(void *arg) {
         do_work(2);
         
         // Check if we've packed enough
-        pthread_mutex_lock(&manager->lock);
-        if (manager->total_packed >= manager->target_count) {
-            pthread_mutex_unlock(&manager->lock);
+        pthread_mutex_lock(&lock);
+        if (total_packed >= target_count) {
+            pthread_mutex_unlock(&lock);
             break;
         }
-        pthread_mutex_unlock(&manager->lock);
+        pthread_mutex_unlock(&lock);
     }
     
     return NULL;
 }
 
-// Initialize hotdog manager
-int hotdog_manager_init(HotdogManager *manager, int N, int S, int M, int P) {
-    manager->size = S;
-    manager->target_count = N;
-    manager->total_produced = 0;
-    manager->total_packed = 0;
-    manager->production_done = 0;
-    manager->next_hotdog_id = 1;  // Start IDs from 1
-    manager->front = 0;
-    manager->back = 0;
-    manager->count = 0;
+// Initialize global state
+int hotdog_manager_init(int N, int S, int M, int P) {
+    buffer_size = S;
+    target_count = N;
+    total_produced = 0;
+    total_packed = 0;
+    production_done = 0;
+    next_hotdog_id = 1;  // Start IDs from 1
+    buffer_front = 0;
+    buffer_back = 0;
+    buffer_count = 0;
     
-    // Allocate buffer
-    manager->buffer = (Hotdog *)malloc(S * sizeof(Hotdog));
-    if (!manager->buffer) return -1;
+    // Allocate buffers
+    hotdog_id_buffer = (int *)malloc(S * sizeof(int));
+    hotdog_maker_buffer = (int *)malloc(S * sizeof(int));
+    if (!hotdog_id_buffer || !hotdog_maker_buffer) {
+        if (hotdog_id_buffer) free(hotdog_id_buffer);
+        if (hotdog_maker_buffer) free(hotdog_maker_buffer);
+        return -1;
+    }
     
     // Allocate counter arrays
-    manager->maker_counts = (int *)calloc(M, sizeof(int));
-    manager->packer_counts = (int *)calloc(P, sizeof(int));
-    if (!manager->maker_counts || !manager->packer_counts) {
-        free(manager->buffer);
-        if (manager->maker_counts) free(manager->maker_counts);
-        if (manager->packer_counts) free(manager->packer_counts);
+    maker_counts = (int *)calloc(M, sizeof(int));
+    packer_counts = (int *)calloc(P, sizeof(int));
+    if (!maker_counts || !packer_counts) {
+        free(hotdog_id_buffer);
+        free(hotdog_maker_buffer);
+        if (maker_counts) free(maker_counts);
+        if (packer_counts) free(packer_counts);
         return -1;
     }
     
-    // Initialize mutexes
-    if (pthread_mutex_init(&manager->lock, NULL) != 0) return -1;
-    if (pthread_mutex_init(&manager->log_lock, NULL) != 0) {
-        pthread_mutex_destroy(&manager->lock);
-        return -1;
-    }
-    
-    // Initialize condition variables
-    if (pthread_cond_init(&manager->not_full, NULL) != 0) {
-        pthread_mutex_destroy(&manager->lock);
-        pthread_mutex_destroy(&manager->log_lock);
-        return -1;
-    }
-    if (pthread_cond_init(&manager->not_empty, NULL) != 0) {
-        pthread_cond_destroy(&manager->not_full);
-        pthread_mutex_destroy(&manager->lock);
-        pthread_mutex_destroy(&manager->log_lock);
-        return -1;
-    }
+    // Note: Mutexes and condition variables are already initialized statically!
+    // No need for pthread_mutex_init() or pthread_cond_init()
     
     // Open log file
-    manager->log_file = fopen("log.txt", "w");
-    if (!manager->log_file) {
-        pthread_cond_destroy(&manager->not_empty);
-        pthread_cond_destroy(&manager->not_full);
-        pthread_mutex_destroy(&manager->log_lock);
-        pthread_mutex_destroy(&manager->lock);
+    log_file = fopen("log.txt", "w");
+    if (!log_file) {
+        free(hotdog_id_buffer);
+        free(hotdog_maker_buffer);
+        free(maker_counts);
+        free(packer_counts);
         return -1;
     }
     
     return 0;
 }
 
-// Cleanup hotdog manager
-void hotdog_manager_cleanup(HotdogManager *manager) {
-    if (manager->log_file) fclose(manager->log_file);
-    if (manager->buffer) free(manager->buffer);
-    if (manager->maker_counts) free(manager->maker_counts);
-    if (manager->packer_counts) free(manager->packer_counts);
+// Cleanup global state
+void hotdog_manager_cleanup(void) {
+    if (log_file) fclose(log_file);
+    if (hotdog_id_buffer) free(hotdog_id_buffer);
+    if (hotdog_maker_buffer) free(hotdog_maker_buffer);
+    if (maker_counts) free(maker_counts);
+    if (packer_counts) free(packer_counts);
     
-    pthread_cond_destroy(&manager->not_empty);
-    pthread_cond_destroy(&manager->not_full);
-    pthread_mutex_destroy(&manager->log_lock);
-    pthread_mutex_destroy(&manager->lock);
+    // Note: With static initialization, we don't need to destroy mutexes/conds
+    // But it's good practice to destroy them anyway
+    pthread_cond_destroy(&not_empty);
+    pthread_cond_destroy(&not_full);
+    pthread_mutex_destroy(&log_lock);
+    pthread_mutex_destroy(&lock);
 }
 
 int main(int argc, char *argv[]) {
@@ -320,49 +302,46 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     
-    HotdogManager manager;
-    if (hotdog_manager_init(&manager, N, S, M, P) != 0) {
+    if (hotdog_manager_init(N, S, M, P) != 0) {
         fprintf(stderr, "Error: Failed to initialize hotdog manager\n");
         return 1;
     }
     
     // Write header to log
-    log_write(&manager, "order:%d\n", N);
-    log_write(&manager, "capacity:%d\n", S);
-    log_write(&manager, "making machines:%d\n", M);
-    log_write(&manager, "packing machines:%d\n", P);
-    log_write(&manager, "-----\n");
+    log_write("order:%d\n", N);
+    log_write("capacity:%d\n", S);
+    log_write("making machines:%d\n", M);
+    log_write("packing machines:%d\n", P);
+    log_write("-----\n");
     
     // Allocate thread arrays
     pthread_t *makers = (pthread_t *)malloc(M * sizeof(pthread_t));
     pthread_t *packers = (pthread_t *)malloc(P * sizeof(pthread_t));
-    ThreadArg *maker_args = (ThreadArg *)malloc(M * sizeof(ThreadArg));
-    ThreadArg *packer_args = (ThreadArg *)malloc(P * sizeof(ThreadArg));
+    int *maker_ids = (int *)malloc(M * sizeof(int));
+    int *packer_ids = (int *)malloc(P * sizeof(int));
     
-    if (!makers || !packers || !maker_args || !packer_args) {
+    if (!makers || !packers || !maker_ids || !packer_ids) {
         fprintf(stderr, "Error: Memory allocation failed\n");
-        hotdog_manager_cleanup(&manager);
+        hotdog_manager_cleanup();
         return 1;
     }
     
     // Create maker threads
     for (int i = 0; i < M; i++) {
-        maker_args[i].manager = &manager;
-        maker_args[i].id = i;
-        if (pthread_create(&makers[i], NULL, maker_thread, &maker_args[i]) != 0) {
+        maker_ids[i] = i;
+        if (pthread_create(&makers[i], NULL, maker_thread, &maker_ids[i]) != 0) {
             fprintf(stderr, "Error: Failed to create maker thread %d\n", i);
-            hotdog_manager_cleanup(&manager);
+            hotdog_manager_cleanup();
             return 1;
         }
     }
     
     // Create packer threads
     for (int i = 0; i < P; i++) {
-        packer_args[i].manager = &manager;
-        packer_args[i].id = i;
-        if (pthread_create(&packers[i], NULL, packer_thread, &packer_args[i]) != 0) {
+        packer_ids[i] = i;
+        if (pthread_create(&packers[i], NULL, packer_thread, &packer_ids[i]) != 0) {
             fprintf(stderr, "Error: Failed to create packer thread %d\n", i);
-            hotdog_manager_cleanup(&manager);
+            hotdog_manager_cleanup();
             return 1;
         }
     }
@@ -373,10 +352,10 @@ int main(int argc, char *argv[]) {
     }
     
     // Signal that production is done
-    pthread_mutex_lock(&manager.lock);
-    manager.production_done = 1;
-    pthread_cond_broadcast(&manager.not_empty);  // Wake all waiting packers
-    pthread_mutex_unlock(&manager.lock);
+    pthread_mutex_lock(&lock);
+    production_done = 1;
+    pthread_cond_broadcast(&not_empty);  // Wake all waiting packers
+    pthread_mutex_unlock(&lock);
     
     // Wait for all packer threads to finish
     for (int i = 0; i < P; i++) {
@@ -384,21 +363,20 @@ int main(int argc, char *argv[]) {
     }
     
     // Write summary
-    log_write(&manager, "-----\nsummary:\n");
+    log_write("-----\nsummary:\n");
     for (int i = 0; i < M; i++) {
-        log_write(&manager, "m%d made %d\n", i + 1, manager.maker_counts[i]);
+        log_write("m%d made %d\n", i + 1, maker_counts[i]);
     }
     for (int i = 0; i < P; i++) {
-        log_write(&manager, "p%d packed %d\n", i + 1, manager.packer_counts[i]);
+        log_write("p%d packed %d\n", i + 1, packer_counts[i]);
     }
     
     // Cleanup
     free(makers);
     free(packers);
-    free(maker_args);
-    free(packer_args);
-    hotdog_manager_cleanup(&manager);
+    free(maker_ids);
+    free(packer_ids);
+    hotdog_manager_cleanup();
     
     return 0;
 }
-
