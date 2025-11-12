@@ -3,7 +3,7 @@
 #include <pthread.h>
 #include <stdarg.h>
 
-// Global shared state (no structs!)
+// shared state
 int *hotdog_id_buffer = NULL;      // Buffer for hotdog IDs
 int *hotdog_maker_buffer = NULL;   // Buffer for maker IDs
 int buffer_size = 0;                // S (buffer capacity)
@@ -11,27 +11,27 @@ int buffer_front = 0;               // Index to remove from
 int buffer_back = 0;                // Index to add to
 int buffer_count = 0;               // Current items in buffer
 
-// Mutexes and condition variables (can use static initialization!)
+// initializes the mutexes and condition variables
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t not_full = PTHREAD_COND_INITIALIZER;
 pthread_cond_t not_empty = PTHREAD_COND_INITIALIZER;
 
-// Global counters
+// global counters 
 int total_produced = 0;             // Global production counter
 int total_packed = 0;               // Global packing counter
 int target_count = 0;               // N (total goal)
 int production_done = 0;            // Flag: 1 when all N produced
 int next_hotdog_id = 1;             // Global counter for unique hotdog IDs
 
-// Per-thread counters
+// counters for each thread 
 int *maker_counts = NULL;           // Per-maker production counts
 int *packer_counts = NULL;          // Per-packer packing counts
 
 // Log file
 FILE *log_file = NULL;
 
-// Simulate n units of work (from lab)
+// work simulation
 void do_work(int n) {
     for (int i = 0; i < n; i++) {
         long m = 300000000L;
@@ -39,7 +39,7 @@ void do_work(int n) {
     }
 }
 
-// Thread-safe logging function
+// logging function
 void log_write(const char *format, ...) {
     va_list args;
     va_start(args, format);
@@ -52,69 +52,59 @@ void log_write(const char *format, ...) {
     va_end(args);
 }
 
-// Producer: Add hotdog to buffer
+// adding hotdog to buffer
 void pool_put(int hotdog_id, int maker_id) {
     pthread_mutex_lock(&lock);
     
-    // Wait while buffer is full AND we still have reserved slots to add
-    // (total_produced was incremented in maker_thread, so we need to add this hotdog)
+    //wait if buffer is full and we still have reserved slots to add
     while (buffer_count == buffer_size && 
            total_produced <= target_count) {
         pthread_cond_wait(&not_full, &lock);
     }
     
-    // Check if we should stop (N already produced)
-    // Note: total_produced was already incremented in maker_thread when ID was assigned
-    // If total_produced > target_count, that's an error (shouldn't happen)
-    // If total_produced == target_count, this is the Nth hotdog and should be added
-    if (total_produced > target_count) {
-        pthread_mutex_unlock(&lock);
-        return; // Error condition - produced too many
-    }
-    
-    // Add to back of circular buffer (FIFO - items added to back, removed from front)
+    // add to back of circular buffer
     hotdog_id_buffer[buffer_back] = hotdog_id;
     hotdog_maker_buffer[buffer_back] = maker_id;
     buffer_back = (buffer_back + 1) % buffer_size;
     buffer_count++;
     
-    // Update counters (total_produced was already incremented in maker_thread)
+    // update counter under lock
     maker_counts[maker_id]++;
     
-    // Log the action while holding the lock to ensure correct order
+    // log while under lock
     log_write("m%d puts %d\n", maker_id + 1, hotdog_id);
     
-    // Signal packers that buffer is not empty
+    // signal packers and makers
     pthread_cond_signal(&not_empty);
-    // Signal makers that buffer is not full
     pthread_cond_signal(&not_full);
+
     pthread_mutex_unlock(&lock);
 }
 
 // Maker thread (producer)
 void* maker_thread(void *arg) {
-    int maker_id = *(int *)arg;  // Just pass int directly, no struct needed
+    int maker_id = *(int *)arg; 
     
     while (1) {
-        // Make hot dog (4 units of work)
+        //4 units to make hotdog
         do_work(4);
         
-        // Check if we should stop AND reserve a production slot (synchronized)
+        //lock to reserve a production slot
         pthread_mutex_lock(&lock);
         
-        // Check if we've produced enough BEFORE reserving a slot
+        //check if we've produced enough before reserving a slot
         if (total_produced >= target_count) {
             pthread_mutex_unlock(&lock);
             break;
         }
         
-        // Reserve a production slot and get unique hotdog ID atomically
-        // This ensures we never exceed N hotdogs
+        //isolate hotdog_id and total hotdogs produced to "reserve"
         int hotdog_id = next_hotdog_id++;
-        total_produced++;  // Reserve the slot immediately
+        total_produced++; 
+
         pthread_mutex_unlock(&lock);
         
-        // Send hot dog into pool (1 unit of work)
+        //1 unit of work
         do_work(1);
         pool_put(hotdog_id, maker_id);
     }
@@ -122,71 +112,70 @@ void* maker_thread(void *arg) {
     return NULL;
 }
 
-// Consumer: Remove hotdog from buffer (FIFO - takes from front)
+//function to get hotdog from buffer
 int pool_get(int *hotdog_id, int *maker_id, int packer_id) {
     pthread_mutex_lock(&lock);
     
-    // Wait while buffer is empty AND production not done AND we haven't packed enough
-    // Exit if: buffer empty AND (production done OR we've packed enough)
+    //wait if buffer empty, production not done, and we haven't packed enough
     while (buffer_count == 0 && 
            !production_done && 
            total_packed < target_count) {
         pthread_cond_wait(&not_empty, &lock);
     }
     
-    // CRITICAL: Check if we've already packed enough BEFORE removing from buffer
-    // This prevents race condition where multiple packers could pack past target_count
+    //if we've packed enough, stop immediately
     if (total_packed >= target_count) {
         pthread_mutex_unlock(&lock);
-        return 0; // Already packed enough, stop immediately
+        return 0; 
     }
     
-    // Check if buffer is empty (after checking total_packed)
+    //check if buffer is empty after checking total_packed
     if (buffer_count == 0) {
-        // Buffer is empty - check if production is done
+        //is production done?
         if (production_done) {
             pthread_mutex_unlock(&lock);
-            return 0; // Production done and buffer empty
+            return 0; 
         }
-        // Shouldn't reach here if wait condition was correct, but handle gracefully
+        //should not be reaching here 
         pthread_mutex_unlock(&lock);
-        return 0; // Buffer empty but production not done (should have waited)
+        return 0;
     }
     
-    // Remove from front of circular buffer (FIFO - first in, first out)
+    //remove from front of circular buffer
     *hotdog_id = hotdog_id_buffer[buffer_front];
     *maker_id = hotdog_maker_buffer[buffer_front];
     buffer_front = (buffer_front + 1) % buffer_size;
     buffer_count--;
     
-    // Update counters
+    //update counters under lock
     total_packed++;
     packer_counts[packer_id]++;
     
-    // Log the action while holding the lock to ensure correct order
+    //log the action 
     log_write("p%d gets %d from m%d\n", packer_id + 1, *hotdog_id, *maker_id + 1);
     
-    // Signal makers that buffer is not full
+    //signal makers 
     pthread_cond_signal(&not_full);
     pthread_mutex_unlock(&lock);
     
     return 1; // Success
 }
 
-// Packer thread (consumer)
+//packer thread
 void* packer_thread(void *arg) {
-    int packer_id = *(int *)arg;  // Just pass int directly, no struct needed
+    int packer_id = *(int *)arg; 
     
     while (1) {
         int hotdog_id, maker_id;
+        //see if can take from the buffer 
         if (!pool_get(&hotdog_id, &maker_id, packer_id)) {
-            break; // No more items
+            break; 
         }
         
-        // Take hot dog from pool (1 unit of work) - only after detecting hotdog
+        //take 1 unit of time 
         do_work(1);
         
-        // Pack the hot dog (2 units of work)
+        //take 2 units of time
         do_work(2);
         
         // Check if we've packed enough
@@ -232,9 +221,7 @@ int hotdog_manager_init(int N, int S, int M, int P) {
         if (packer_counts) free(packer_counts);
         return -1;
     }
-    
-    // Note: Mutexes and condition variables are already initialized statically!
-    // No need for pthread_mutex_init() or pthread_cond_init()
+
     
     // Open log file
     log_file = fopen("log.txt", "w");
@@ -248,8 +235,7 @@ int hotdog_manager_init(int N, int S, int M, int P) {
     
     return 0;
 }
-
-// Cleanup global state
+//clean up global state
 void hotdog_manager_cleanup(void) {
     if (log_file) fclose(log_file);
     if (hotdog_id_buffer) free(hotdog_id_buffer);
@@ -265,6 +251,8 @@ void hotdog_manager_cleanup(void) {
     pthread_mutex_destroy(&lock);
 }
 
+
+//main function
 int main(int argc, char *argv[]) {
     if (argc != 5) {
         fprintf(stderr, "Usage: %s <N> <S> <M> <P>\n", argv[0]);
@@ -307,14 +295,14 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     
-    // Write header to log
+    //header for logs 
     log_write("order:%d\n", N);
     log_write("capacity:%d\n", S);
     log_write("making machines:%d\n", M);
     log_write("packing machines:%d\n", P);
     log_write("-----\n");
     
-    // Allocate thread arrays
+    //allocate thread arrays
     pthread_t *makers = (pthread_t *)malloc(M * sizeof(pthread_t));
     pthread_t *packers = (pthread_t *)malloc(P * sizeof(pthread_t));
     int *maker_ids = (int *)malloc(M * sizeof(int));
@@ -326,7 +314,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     
-    // Create maker threads
+    // create maker threads 
     for (int i = 0; i < M; i++) {
         maker_ids[i] = i;
         if (pthread_create(&makers[i], NULL, maker_thread, &maker_ids[i]) != 0) {
@@ -336,7 +324,7 @@ int main(int argc, char *argv[]) {
         }
     }
     
-    // Create packer threads
+    // create packer threads
     for (int i = 0; i < P; i++) {
         packer_ids[i] = i;
         if (pthread_create(&packers[i], NULL, packer_thread, &packer_ids[i]) != 0) {
@@ -345,24 +333,26 @@ int main(int argc, char *argv[]) {
             return 1;
         }
     }
-    
-    // Wait for all maker threads to finish
+    //wait for maker and packer threads to finish 
+
+    //wait for maker threads to finish 
     for (int i = 0; i < M; i++) {
         pthread_join(makers[i], NULL);
     }
     
-    // Signal that production is done
+    //signal production is done 
     pthread_mutex_lock(&lock);
     production_done = 1;
-    pthread_cond_broadcast(&not_empty);  // Wake all waiting packers
+    //wake up all packers
+    pthread_cond_broadcast(&not_empty);  
     pthread_mutex_unlock(&lock);
     
-    // Wait for all packer threads to finish
+    //wait for packers threads to finish 
     for (int i = 0; i < P; i++) {
         pthread_join(packers[i], NULL);
     }
     
-    // Write summary
+    //summary
     log_write("-----\nsummary:\n");
     for (int i = 0; i < M; i++) {
         log_write("m%d made %d\n", i + 1, maker_counts[i]);
