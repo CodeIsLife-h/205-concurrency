@@ -79,6 +79,9 @@ void pool_put(int hotdog_id, int maker_id) {
     pthread_cond_signal(&not_full);
 
     pthread_mutex_unlock(&lock);
+    
+    //1 unit of work
+    do_work(1);
 }
 
 // Maker thread (producer)
@@ -86,10 +89,7 @@ void* maker_thread(void *arg) {
     int maker_id = *(int *)arg; 
     
     while (1) {
-        //4 units to make hotdog
-        do_work(4);
-        
-        //lock to reserve a production slot
+        //lock to reserve a production slot AND hotdog_id FIRST
         pthread_mutex_lock(&lock);
         
         //check if we've produced enough before reserving a slot
@@ -99,13 +99,14 @@ void* maker_thread(void *arg) {
         }
         
         //isolate hotdog_id and total hotdogs produced to "reserve"
-        int hotdog_id = next_hotdog_id++;
+        int hotdog_id = next_hotdog_id++;  // <-- Assign ID BEFORE work
         total_produced++; 
 
         pthread_mutex_unlock(&lock);
         
-        //1 unit of work
-        do_work(1);
+        //4 units to make hotdog (now with assigned ID)
+        do_work(4);
+        
         pool_put(hotdog_id, maker_id);
     }
     
@@ -166,6 +167,9 @@ int pool_get(int *hotdog_id, int *maker_id, int packer_id) {
     pthread_cond_signal(&not_full);
     pthread_mutex_unlock(&lock);
     
+    //1 unit of work
+    do_work(1);
+    
     return 1; // Success
 }
 
@@ -203,9 +207,6 @@ void* packer_thread(void *arg) {
         
         // Buffer has items - confirmed, unlock before doing work
         pthread_mutex_unlock(&lock);
-        
-        // Take hotdog from pool (1 unit of time) - only after confirming buffer has items
-        do_work(1);
         
         // Now actually get the hotdog from buffer
         int hotdog_id, maker_id;
