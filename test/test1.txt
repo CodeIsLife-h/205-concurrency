@@ -1,0 +1,31 @@
+order:10
+capacity:3
+making machines:2
+packing machines:2
+-----
+m2 puts 1
+m1 puts 2
+p1 gets 1 from m2
+p2 gets 2 from m1
+m1 puts 3
+p1 gets 3 from m1
+m2 puts 4
+p2 gets 4 from m2
+m1 puts 5
+p1 gets 5 from m1
+m2 puts 6
+p2 gets 6 from m2
+m1 puts 7
+p1 gets 7 from m1
+m2 puts 8
+p2 gets 8 from m2
+m1 puts 9
+p1 gets 9 from m1
+m2 puts 10
+p2 gets 10 from m2
+-----
+summary:
+m1 made 5
+m2 made 5
+p1 packed 5
+p2 packed 5

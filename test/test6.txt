@@ -1,0 +1,267 @@
+order:100
+capacity:20
+making machines:30
+packing machines:30
+-----
+m18 puts 1
+p7 gets 1 from m18
+m24 puts 4
+m4 puts 8
+m21 puts 7
+m8 puts 10
+m3 puts 9
+m9 puts 13
+m24 puts 14
+m1 puts 2
+p13 gets 4 from m24
+p13 gets 8 from m4
+m3 puts 16
+m5 puts 15
+m4 puts 12
+m21 puts 19
+m7 puts 17
+m29 puts 3
+p21 gets 7 from m21
+m15 puts 6
+m25 puts 5
+m26 puts 11
+p8 gets 10 from m8
+m11 puts 18
+p11 gets 9 from m3
+m30 puts 27
+m12 puts 21
+p18 gets 13 from m9
+p20 gets 14 from m24
+p15 gets 2 from m1
+p9 gets 16 from m3
+m17 puts 22
+m22 puts 26
+m23 puts 28
+m18 puts 30
+m5 puts 20
+p16 gets 15 from m5
+m14 puts 36
+m26 puts 42
+m1 puts 31
+m16 puts 24
+p22 gets 12 from m4
+p15 gets 19 from m21
+m20 puts 25
+m9 puts 40
+m8 puts 35
+p13 gets 17 from m7
+p12 gets 3 from m29
+p14 gets 6 from m15
+p20 gets 5 from m25
+m4 puts 41
+m2 puts 38
+p26 gets 11 from m26
+p8 gets 18 from m11
+p26 gets 27 from m30
+m28 puts 29
+p13 gets 21 from m12
+m10 puts 23
+m22 puts 45
+m24 puts 32
+p1 gets 22 from m17
+p12 gets 26 from m22
+p1 gets 28 from m23
+p14 gets 30 from m18
+p30 gets 20 from m5
+p17 gets 36 from m14
+p18 gets 42 from m26
+p7 gets 31 from m1
+m27 puts 34
+p17 gets 24 from m16
+p24 gets 25 from m20
+p19 gets 40 from m9
+p22 gets 35 from m8
+p23 gets 41 from m4
+p20 gets 38 from m2
+m7 puts 55
+p21 gets 29 from m28
+p27 gets 23 from m10
+p11 gets 45 from m22
+m1 puts 56
+m30 puts 57
+p29 gets 32 from m24
+p29 gets 34 from m27
+m18 puts 58
+p27 gets 55 from m7
+p11 gets 56 from m1
+m7 puts 61
+m1 puts 59
+p8 gets 57 from m30
+m11 puts 62
+m23 puts 49
+m15 puts 43
+p6 gets 58 from m18
+m13 puts 37
+m6 puts 33
+p11 gets 61 from m7
+m9 puts 50
+m18 puts 63
+m9 puts 66
+m19 puts 39
+p29 gets 59 from m1
+m28 puts 46
+m25 puts 44
+m2 puts 48
+m20 puts 65
+m26 puts 47
+m30 puts 60
+p10 gets 62 from m11
+p7 gets 49 from m23
+p1 gets 43 from m15
+m3 puts 51
+m29 puts 52
+m19 puts 72
+m12 puts 70
+p13 gets 37 from m13
+p14 gets 33 from m6
+m27 puts 73
+p19 gets 50 from m9
+m21 puts 53
+p3 gets 63 from m18
+m14 puts 54
+p25 gets 66 from m9
+p28 gets 39 from m19
+p4 gets 46 from m28
+p9 gets 44 from m25
+p17 gets 48 from m2
+p5 gets 65 from m20
+p27 gets 47 from m26
+m16 puts 64
+p18 gets 60 from m30
+p26 gets 51 from m3
+m5 puts 68
+m25 puts 74
+m2 puts 80
+m1 puts 81
+p21 gets 52 from m29
+m23 puts 83
+p18 gets 72 from m19
+p12 gets 70 from m12
+p3 gets 73 from m27
+p12 gets 53 from m21
+p3 gets 54 from m14
+p8 gets 64 from m16
+p8 gets 68 from m5
+p11 gets 74 from m25
+p11 gets 80 from m2
+p15 gets 81 from m1
+m13 puts 88
+m22 puts 71
+p29 gets 83 from m23
+m19 puts 91
+m16 puts 96
+p27 gets 88 from m13
+p4 gets 71 from m22
+p8 gets 91 from m19
+p22 gets 96 from m16
+m24 puts 77
+p10 gets 77 from m24
+m4 puts 76
+p2 gets 76 from m4
+m26 puts 75
+p20 gets 75 from m26
+m17 puts 79
+m10 puts 78
+p23 gets 79 from m17
+p16 gets 78 from m10
+m8 puts 69
+m11 puts 84
+m6 puts 82
+m30 puts 85
+p16 gets 69 from m8
+m7 puts 86
+p4 gets 84 from m11
+p9 gets 82 from m6
+p7 gets 85 from m30
+m15 puts 89
+p28 gets 86 from m7
+m9 puts 92
+m21 puts 97
+m18 puts 67
+m5 puts 90
+p11 gets 89 from m15
+p18 gets 92 from m9
+m28 puts 94
+m27 puts 93
+m20 puts 95
+m1 puts 87
+p30 gets 97 from m21
+p16 gets 67 from m18
+m22 puts 98
+p22 gets 90 from m5
+p29 gets 94 from m28
+p1 gets 93 from m27
+p17 gets 95 from m20
+p12 gets 87 from m1
+p15 gets 98 from m22
+m29 puts 100
+p17 gets 100 from m29
+m3 puts 99
+p26 gets 99 from m3
+-----
+summary:
+m1 made 6
+m2 made 3
+m3 made 4
+m4 made 4
+m5 made 4
+m6 made 2
+m7 made 4
+m8 made 3
+m9 made 5
+m10 made 2
+m11 made 3
+m12 made 2
+m13 made 2
+m14 made 2
+m15 made 3
+m16 made 3
+m17 made 2
+m18 made 5
+m19 made 3
+m20 made 3
+m21 made 4
+m22 made 4
+m23 made 3
+m24 made 4
+m25 made 3
+m26 made 4
+m27 made 3
+m28 made 3
+m29 made 3
+m30 made 4
+p1 packed 4
+p2 packed 1
+p3 packed 3
+p4 packed 3
+p5 packed 1
+p6 packed 1
+p7 packed 4
+p8 packed 6
+p9 packed 3
+p10 packed 2
+p11 packed 7
+p12 packed 5
+p13 packed 5
+p14 packed 3
+p15 packed 4
+p16 packed 4
+p17 packed 5
+p18 packed 5
+p19 packed 2
+p20 packed 4
+p21 packed 3
+p22 packed 4
+p23 packed 2
+p24 packed 1
+p25 packed 1
+p26 packed 4
+p27 packed 4
+p28 packed 2
+p29 packed 5
+p30 packed 2

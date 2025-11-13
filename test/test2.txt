@@ -1,0 +1,74 @@
+order:30
+capacity:5
+making machines:5
+packing machines:2
+-----
+m2 puts 1
+p1 gets 1 from m2
+m3 puts 3
+m1 puts 2
+m5 puts 4
+m4 puts 5
+m2 puts 6
+p1 gets 3 from m3
+m3 puts 7
+p1 gets 2 from m1
+m1 puts 8
+p2 gets 4 from m5
+m2 puts 9
+p1 gets 5 from m4
+m5 puts 10
+p2 gets 6 from m2
+m1 puts 11
+p2 gets 7 from m3
+m5 puts 12
+p1 gets 8 from m1
+m2 puts 13
+p2 gets 9 from m2
+m3 puts 14
+p1 gets 10 from m5
+m1 puts 16
+p1 gets 11 from m1
+m4 puts 15
+p2 gets 12 from m5
+m5 puts 17
+p1 gets 13 from m2
+m1 puts 19
+p2 gets 14 from m3
+m3 puts 18
+p1 gets 16 from m1
+m4 puts 21
+p1 gets 15 from m4
+m5 puts 22
+p2 gets 17 from m5
+p1 gets 19 from m1
+m2 puts 20
+m1 puts 23
+p2 gets 18 from m3
+m4 puts 25
+p1 gets 21 from m4
+m5 puts 26
+p2 gets 22 from m5
+p2 gets 20 from m2
+m2 puts 28
+p2 gets 23 from m1
+m4 puts 27
+m1 puts 29
+p2 gets 25 from m4
+m5 puts 30
+p2 gets 26 from m5
+m3 puts 24
+p1 gets 28 from m2
+p2 gets 27 from m4
+p2 gets 29 from m1
+p1 gets 30 from m5
+p1 gets 24 from m3
+-----
+summary:
+m1 made 7
+m2 made 6
+m3 made 5
+m4 made 5
+m5 made 7
+p1 packed 15
+p2 packed 15

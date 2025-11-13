@@ -1,0 +1,70 @@
+# Non-integer or junk values
+./hotdog_manager
+Usage: ./hotdog_manager <N> <S> <M> <P>
+  N = total hot dogs to produce
+  S = buffer size
+  M = number of maker threads
+  P = number of packer threads
+./hotdog_manager 10
+Usage: ./hotdog_manager <N> <S> <M> <P>
+  N = total hot dogs to produce
+  S = buffer size
+  M = number of maker threads
+  P = number of packer threads
+./hotdog_manager 10 3
+Usage: ./hotdog_manager <N> <S> <M> <P>
+  N = total hot dogs to produce
+  S = buffer size
+  M = number of maker threads
+  P = number of packer threads
+./hotdog_manager 10 3 2
+Usage: ./hotdog_manager <N> <S> <M> <P>
+  N = total hot dogs to produce
+  S = buffer size
+  M = number of maker threads
+  P = number of packer threads
+./hotdog_manager 10 3 2 2 extra
+Usage: ./hotdog_manager <N> <S> <M> <P>
+  N = total hot dogs to produce
+  S = buffer size
+  M = number of maker threads
+  P = number of packer threads
+
+# Empty / whitespace-only arguments
+./hotdog_manager '' 3 2 2 
+Error: All arguments must be positive integers
+./hotdog_manager '   ' 3 2 2 
+Error: All arguments must be positive integers
+
+# Non-integer or junk values
+./hotdog_manager abc 3 2 2
+Error: All arguments must be positive integers
+./hotdog_manager 10 3x 2 2
+./hotdog_manager 10 3 2.5 2
+./hotdog_manager 10 2 2.0 2
+./hotdog_manager 10xyz 3 2 2
+
+# Negative or zero values
+./hotdog_manager 0 3 2 2
+Error: All arguments must be positive integers
+./hotdog_manager 10 0 2 2
+Error: All arguments must be positive integers
+./hotdog_manager 10 3 0 2
+Error: All arguments must be positive integers
+./hotdog_manager 10 3 2 0
+Error: All arguments must be positive integers
+
+# Out of range / invalid relationships
+./hotdog_manager -5 3 2 2
+Error: All arguments must be positive integers
+./hotdog_manager 10 -1 2 2
+Error: All arguments must be positive integers
+./hotdog_manager 10 3 -2 2
+Error: All arguments must be positive integers
+./hotdog_manager 10 3 31 2
+./hotdog_manager 10 3 2 31
+Error: Number of packer threads (P) cannot exceed 30
+./hotdog_manager 5 5 2 2
+Error: Total hot dogs (N) must be greater than buffer size (S)
+./hotdog_manager 5 6 2 2
+Error: Total hot dogs (N) must be greater than buffer size (S)
