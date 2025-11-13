@@ -1,0 +1,5 @@
+order:10
+capacity:3
+making machines:2
+packing machines:2
+-----

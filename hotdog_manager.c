@@ -239,4 +239,6 @@ int main(int argc, char *argv[]) {
         free(maker_counts);
         free(packer_counts);
         free(makers);
-        free(packers
+        free(packers);
+    }
+}
