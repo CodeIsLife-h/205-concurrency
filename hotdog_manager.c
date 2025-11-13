@@ -71,12 +71,14 @@ void pool_put(int hotdog_id, int maker_id) {
     // update counter under lock
     maker_counts[maker_id]++;
     
+    //1 unit of work to put hotdog onto buffer (inside mutex)
+    do_work(1);
+    
     // log while under lock
     log_write("m%d puts %d\n", maker_id + 1, hotdog_id);
     
-    // signal packers and makers
+    // signal packers (inside mutex)
     pthread_cond_signal(&not_empty);
-    pthread_cond_signal(&not_full);
 
     pthread_mutex_unlock(&lock);
 }
@@ -104,8 +106,6 @@ void* maker_thread(void *arg) {
 
         pthread_mutex_unlock(&lock);
         
-        //1 unit of work
-        do_work(1);
         pool_put(hotdog_id, maker_id);
     }
     
@@ -159,10 +159,10 @@ int pool_get(int *hotdog_id, int *maker_id, int packer_id) {
     total_packed++;
     packer_counts[packer_id]++;
     
-    //log the action 
-    log_write("p%d gets %d from m%d\n", packer_id + 1, *hotdog_id, *maker_id + 1);
+    //1 unit of work to take hotdog from buffer (inside mutex)
+    do_work(1);
     
-    //signal makers 
+    //signal makers (inside mutex)
     pthread_cond_signal(&not_full);
     pthread_mutex_unlock(&lock);
     
@@ -174,55 +174,17 @@ void* packer_thread(void *arg) {
     int packer_id = *(int *)arg; 
     
     while (1) {
-        // Check if buffer has items before doing work
-        // Wait if buffer is empty, production not done, and we haven't packed enough
-        pthread_mutex_lock(&lock);
-        while (buffer_count == 0 && 
-               !production_done && 
-               total_packed < target_count) {
-            pthread_cond_wait(&not_empty, &lock);
-        }
-        
-        // Check if we should stop
-        if (total_packed >= target_count) {
-            pthread_mutex_unlock(&lock);
-            break;
-        }
-        
-        // Check if buffer is empty and production is done
-        if (buffer_count == 0 && production_done) {
-            pthread_mutex_unlock(&lock);
-            break;
-        }
-        
-        // If buffer is empty but production not done, continue waiting
-        if (buffer_count == 0) {
-            pthread_mutex_unlock(&lock);
-            continue;
-        }
-        
-        // Buffer has items - confirmed, unlock before doing work
-        pthread_mutex_unlock(&lock);
-        
-        // Take hotdog from pool (1 unit of time) - only after confirming buffer has items
-        do_work(1);
-        
-        // Now actually get the hotdog from buffer
+        // Get hotdog from buffer
         int hotdog_id, maker_id;
         if (!pool_get(&hotdog_id, &maker_id, packer_id)) {
             break; 
         }
         
-        // Pack the hotdog (2 units of time) - only after pool_get is called
+        // Pack the hotdog (2 units of time) - outside the mutex
         do_work(2);
         
-        // Check if we've packed enough
-        pthread_mutex_lock(&lock);
-        if (total_packed >= target_count) {
-            pthread_mutex_unlock(&lock);
-            break;
-        }
-        pthread_mutex_unlock(&lock);
+        // Log after packing (outside the mutex, but log_write uses log_lock for thread safety)
+        log_write("p%d gets %d from m%d\n", packer_id + 1, hotdog_id, maker_id + 1);
     }
     
     return NULL;
